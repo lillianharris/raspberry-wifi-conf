@@ -14,12 +14,12 @@ module.exports = function(cmd_options, callback) {
     var fields_to_extract = {
         "ssid":            /ESSID:\"(.*)\"/,
         "quality":         /Quality=(\d+)\/100/,
-        "signal_strength": /.*Signal level=(\d+)\/100/,
+        "signal_strength": /Signal level=-(\d+)/,
         "encrypted":       /Encryption key:(on)/,
         "open":            /Encryption key:(off)/,
     };
 
-    exec("sudo iw dev wlan0 scan ap-force | gawk -f pareseIW.awk", fucntion(error, stdout, stderr) {
+    exec("iw dev wlan0 scan ap-force | gawk -f parseIW.awk", function(error, stdout, stderr) {
         // Handle errors from running "iwlist scan"
         if (error) {
             return callback(error, output)
@@ -36,6 +36,7 @@ module.exports = function(cmd_options, callback) {
             },
             ...
         ] */
+
         var output          = [],
             interface_entry = null,
             current_cell    = null;
@@ -59,6 +60,7 @@ module.exports = function(cmd_options, callback) {
         }
 
         // Parse the result, build return object
+	console.log(stdout);
         lines = stdout.split("\n");
         for (var idx in lines) {
             line = lines[idx].trim();

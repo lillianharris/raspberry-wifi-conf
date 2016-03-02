@@ -1,7 +1,10 @@
 var async               = require("async"),
     wifi_manager        = require("./app/wifi_manager")(),
     dependency_manager  = require("./app/dependency_manager")(),
+    fs 			= require("fs"),
+    exec		= require("child_process").exec,
     config              = require("./config.json");
+    
 
 /*****************************************************************************\
     1. Check for dependencies
@@ -18,7 +21,33 @@ var async               = require("async"),
     7. At this stage, the RPI is named, and has a valid wifi connection which
        its bound to, reboot the pi and re-run this script on startup.
 \*****************************************************************************/
+
+
 async.series([
+    //Set the SSID for the RPI as DROPLETXXX where XXX is the MAC address
+    function set_ssid(next_step) {
+	exec("ifconfig eth0", function(error, stdout, stderr) {
+     	if (error) {
+		console.log(error);
+		return;
+	     }
+	
+	     var values = stdout.match(/HWaddr\s([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/g);
+	     if (values) {
+		//Format the MAC address
+		var HWaddr = values[0].slice(7);
+		HWaddr = HWaddr.replace(/:/g, "");
+	
+		//set ssid in config.json
+		config.access_point.ssid = "Droplet" + HWaddr;
+		fs.writeFileSync("config.json", JSON.stringify(config));
+		console.log("SSID has been set to " + config.access_point.ssid);
+	     } else {
+		console.log("HWaddr of eth0 not found");
+	     }
+	});
+	next_step();
+    },
 
     // 1. Check if we have the required dependencies installed
     function test_deps(next_step) {
@@ -35,17 +64,37 @@ async.series([
     function test_is_wifi_enabled(next_step) {
         wifi_manager.is_wifi_enabled(function(error, result_ip) {
             if (result_ip) {
-                console.log("\nWifi is enabled, and IP " + result_ip + " assigned");
-                process.exit(0);
+		exec("iwconfig wlan0", function(error, stdout, stderr) {
+			var lines = stdout.split("\n");
+			for (var idx in lines) {
+				line = lines[idx].trim();
+				var mode = line.match(/Mode:Master/);
+				if (mode) {
+					console.log("Mode:Master");
+					next_step(error);
+					return;
+				}
+			}
+			console.log("\nWifi is enabled, and IP " + result_ip + " assigned");
+                	process.exit(0);
+		}); 
             } else {
                 console.log("\nWifi is not enabled, Enabling AP for self-configure");
+		wifi_manager.enable_ap_mode(config.access_point.ssid, function(error) {
+			if(error) {
+		        	console.log("... AP Enable ERROR: " + error);
+		        } else {
+		                console.log("... AP Enable Success!");
+		        }
+		        next_step(error);
+        	});
             }
-            next_step(error);
+            //next_step(error);
         });
     },
 
     // 3. Turn RPI into an access point
-    function enable_rpi_ap(next_step) {
+    /*function enable_rpi_ap(next_step) {
         wifi_manager.enable_ap_mode(config.access_point.ssid, function(error) {
             if(error) {
                 console.log("... AP Enable ERROR: " + error);
@@ -54,14 +103,16 @@ async.series([
             }
             next_step(error);
         });
-    },
+    },*/
 
     // 4. Host HTTP server while functioning as AP, the "api.js"
     //    file contains all the needed logic to get a basic express
     //    server up. It uses a small angular application which allows
     //    us to choose the wifi of our choosing.
     function start_http_server(next_step) {
+	console.log("before HTTP server");
         require("./app/api.js")(wifi_manager, next_step);
+	console.log("after HTTP server");
     },
 
 ], function(error) {

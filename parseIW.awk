@@ -21,7 +21,9 @@ $1 == "BSS" {
     cells[macadr]["enc"] = "off"
 }
 $1 == "SSID:" {
-    cells[macadr]["ssid"] = $2
+    value = $2;
+    for (i=3; i<=NF; i++) {value = value" "$i};
+    cells[macadr]["ssid"] = value
 }
 $1 == "signal:" {
     cells[macadr]["signal_level"] = $2 " " $3

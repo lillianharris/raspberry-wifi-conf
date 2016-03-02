@@ -92,6 +92,7 @@ module.exports = function() {
     },
 
     _reboot_wireless_network = function(wlan_iface, callback) {
+	console.log("rebooting_wireless_network");
         async.series([
             function down(next_step) {
                 exec("sudo ifdown " + wlan_iface, function(error, stdout, stderr) {
@@ -101,8 +102,10 @@ module.exports = function() {
             },
             function up(next_step) {
                 exec("sudo ifup " + wlan_iface, function(error, stdout, stderr) {
-                    if (!error) console.log("ifup " + wlan_iface + " successful...");
-                    next_step();
+                    if (!error) {
+			console.log("ifup " + wlan_iface + " successful...");
+                    	next_step();
+		    } else { console.log(error); } 
                 });
             },
         ], callback);
@@ -132,9 +135,15 @@ module.exports = function() {
         // If the hw_addr matches the ap_addr
         // and the ap_ssid matches "rpi-config-ap"
         // then we are in AP mode
+        if( typeof info["ap_addr"] == 'undefined' )
+        {
+            return( null );
+        }
+        console.log( "hw_addr %s - ap_addr %s - ap_ssid %s\n", info["hw_addr"], info["ap_addr"], info["ap_ssid"] );
+         
         var is_ap  =
-            info["hw_addr"].toLowerCase() == info["ap_addr"].toLowerCase() &&
-            info["ap_ssid"] == config.access_point.ssid;
+            (info["hw_addr"].toLowerCase() == info["ap_addr"].toLowerCase()) &&
+            (info["ap_ssid"] == config.access_point.ssid);
         return (is_ap) ? info["hw_addr"].toLowerCase() : null;
     },
 
@@ -247,33 +256,37 @@ module.exports = function() {
 
             if (result_ip) {
                 console.log("\nWifi connection is enabled with IP: " + result_ip);
-                return callback(null);
+                //return callback(null);
             }
+		console.log("enabling wifi mode...");
 
             async.series([
 
                 // Update /etc/network/interface with correct info...
                 function update_interfaces(next_step) {
+	            console.log("writing to template...");
                     write_template_to_file(
                         "./assets/etc/network/interfaces.wifi.template",
                         "/etc/network/interfaces",
                         connection_info, next_step);
+			
                 },
 
                 // Stop the DHCP server...
                 function restart_dhcp_service(next_step) {
                     exec("service isc-dhcp-server stop", function(error, stdout, stderr) {
-                        //console.log(stdout);
-                        if (!error) console.log("... dhcp server stopped!");
-                        next_step();
+                        if (!error) console.log("... dhcp server stopped!")	;
+			next_step();
                     });
                 },
 
                 function reboot_network_interfaces(next_step) {
-                    _reboot_wireless_network(config.wifi_interface, next_step);
+                    _reboot_wireless_network(config.wifi_interface, next_step); 
                 },
+	    
 
             ], callback);
+		
         });
 
     };

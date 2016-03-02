@@ -50,6 +50,7 @@ module.exports = function(wifi_manager, callback) {
     });
 
     app.post("/api/enable_wifi", function(request, response) {
+	response.end();
         var conn_info = {
             wifi_ssid:      request.body.wifi_ssid,
             wifi_passcode:  request.body.wifi_passcode,

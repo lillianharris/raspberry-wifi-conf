@@ -12,3 +12,7 @@ allow-hotplug wlan0
 iface wlan0 inet dhcp
   wpa-ssid "{{ wifi_ssid }}"
   wpa-psk  "{{ wifi_passcode }}"
+
+#dhcp
+#wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
+#iface default inet dhcp

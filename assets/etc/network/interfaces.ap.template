@@ -11,3 +11,7 @@ allow-hotplug wlan0
 iface wlan0 inet static
   address {{ ip_addr }}
   netmask {{ netmask }}
+
+#dhcp
+#wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf
+#iface default inet dhcp
