@@ -4,7 +4,8 @@ var path       = require("path"),
     express    = require("express"),
     bodyParser = require('body-parser'),
     config     = require("../config.json"),
-    http_test  = config.http_test_only;
+    http_test  = config.http_test_only,
+    exec       = require("child_process").exec;
 
 // Helper function to log errors and send a generic status "SUCCESS"
 // message to the caller
@@ -40,6 +41,11 @@ module.exports = function(wifi_manager, callback) {
         response.render("index");
     });
 
+    // Get mac address
+    //app.get("/address", fucntion(request, response) {
+	
+    //})
+
     // Setup HTTP routes for various APIs we wish to implement
     // the responses to these are typically JSON
     app.get("/api/rescan_wifi", function(request, response) {
@@ -66,10 +72,29 @@ module.exports = function(wifi_manager, callback) {
                     console.log("... AP mode reset");
                 });
                 response.redirect("/");
-            }
-            // Success! - exit
-            console.log("Wifi Enabled! - Exiting");
-            process.exit(0);
+            } else {
+	    	exec("ifconfig eth0", function(error, stdout, stderr) {
+	     	     if (error) {
+			console.log(error);
+			return;
+		     }
+		
+		     var inet_addr = stdout.match(/inet addr:/g);
+		     if (inet_addr) {
+			// Success! - exit
+			console.log("Wifi enabled! - Exiting");
+			process.exit(0);
+		     } else {
+			console.log("Enable wifi failed");
+			console.log("Attempt to re-enable AP mode");
+                	wifi_manager.enable_ap_mode(config.access_point.ssid, function(error) {
+                    		console.log("... AP mode reset");
+                	});
+                	//response.redirect("/");
+		     }
+		});
+	    }
+            
         });
     });
 
