@@ -27,6 +27,22 @@ function write_template_to_file(template_path, file_name, context, callback) {
     ], callback);
 }
 
+// Helper function to write a given template to a file 
+/*function write_template_to_file(template_path, file_name, callback) {
+    async.waterfall([
+
+        function read_template_file(next_step) {
+            fs.readFile(template_path, {encoding: "utf8"}, next_step);
+        },
+
+        function update_file(file_txt, next_step) {
+            var template = _.template(file_txt);
+            fs.writeFile(file_name, template, next_step);
+        }
+
+    ], callback);
+}*/
+
 /*****************************************************************************\
     Return a set of functions which we can use to manage and check our wifi
     connection information
@@ -260,17 +276,30 @@ module.exports = function() {
             }
 		console.log("enabling wifi mode...");
 
+	    var context = config.access_poiny;
+
             async.series([
 
                 // Update /etc/network/interface with correct info...
                 function update_interfaces(next_step) {
 	            console.log("writing to template...");
-                    write_template_to_file(
+                    /*write_template_to_file(
                         "./assets/etc/network/interfaces.wifi.template",
                         "/etc/network/interfaces",
-                        connection_info, next_step);
-			
+                        connection_info, next_step);*/
+		    write_template_to_file(
+                        "./assets/etc/network/interfaces.template",
+                        "/etc/network/interfaces", context, next_step);
                 },
+
+		// Update wpa_supplicant with correct info
+		function update_wpa_supplicant(next_step) {
+		    console.log("writing to wpa_supplicant...");
+		    write_template_to_file(
+                        "./assets/etc/wpa_supplicant/wpa_supplicant.conf.wifi.template",
+                        "/etc/wpa_supplicant/wpa_supplicant.conf",
+                        connection_info, next_step);
+		},
 
                 // Stop the DHCP server...
                 function restart_dhcp_service(next_step) {

@@ -73,12 +73,13 @@ module.exports = function(wifi_manager, callback) {
                 });
                 response.redirect("/");
             } else {
-	    	exec("ifconfig eth0", function(error, stdout, stderr) {
+	    	exec("ifconfig wlan0", function(error, stdout, stderr) {
 	     	     if (error) {
 			console.log(error);
 			return;
 		     }
-		
+			
+	             //console.log(stdout);
 		     var inet_addr = stdout.match(/inet addr:/g);
 		     if (inet_addr) {
 			// Success! - exit
