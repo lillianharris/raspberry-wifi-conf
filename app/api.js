@@ -42,9 +42,16 @@ module.exports = function(wifi_manager, callback) {
     });
 
     // Get mac address
-    //app.get("/address", fucntion(request, response) {
+    app.get("/api/get_ssid", function(request, response) {
+	console.log("server got /get_ssid");
+		
+	var ssid = {
+		ssid: config.access_point.ssid
+	}
 	
-    //})
+	response.send(ssid);
+	response.end();
+    });
 
     // Setup HTTP routes for various APIs we wish to implement
     // the responses to these are typically JSON
@@ -79,7 +86,7 @@ module.exports = function(wifi_manager, callback) {
 			return;
 		     }
 			
-	             //console.log(stdout);
+	             console.log(stdout);
 		     var inet_addr = stdout.match(/inet addr:/g);
 		     if (inet_addr) {
 			// Success! - exit
