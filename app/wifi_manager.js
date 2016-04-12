@@ -27,22 +27,6 @@ function write_template_to_file(template_path, file_name, context, callback) {
     ], callback);
 }
 
-// Helper function to write a given template to a file 
-/*function write_template_to_file(template_path, file_name, callback) {
-    async.waterfall([
-
-        function read_template_file(next_step) {
-            fs.readFile(template_path, {encoding: "utf8"}, next_step);
-        },
-
-        function update_file(file_txt, next_step) {
-            var template = _.template(file_txt);
-            fs.writeFile(file_name, template, next_step);
-        }
-
-    ], callback);
-}*/
-
 /*****************************************************************************\
     Return a set of functions which we can use to manage and check our wifi
     connection information
@@ -66,6 +50,7 @@ module.exports = function() {
         "ap_addr":         /Access Point:\s([^\s]+)/,
         "ap_ssid":         /ESSID:\"([^\"]+)\"/,
         "unassociated":    /(unassociated)\s+Nick/,
+	"mode":		   /Mode:([^\s]+)/,
     },  last_wifi_info = null;
 
     // TODO: rpi-config-ap hardcoded, should derive from a constant
@@ -76,6 +61,7 @@ module.exports = function() {
             hw_addr:      "<unknown>",
             inet_addr:    "<unknown>",
             unassociated: "<unknown>",
+	    ap_ssid: 	  "<unknown",
         };
 
         // Inner function which runs a given command and sets a bunch
@@ -108,20 +94,23 @@ module.exports = function() {
     },
 
     _reboot_wireless_network = function(wlan_iface, callback) {
-	console.log("rebooting_wireless_network");
         async.series([
             function down(next_step) {
                 exec("sudo ifdown " + wlan_iface, function(error, stdout, stderr) {
-                    if (!error) console.log("ifdown " + wlan_iface + " successful...");
-                    next_step();
+                    if (!error ) console.log("ifdown " + wlan_iface + " successful...");
+		    next_step();
                 });
             },
             function up(next_step) {
                 exec("sudo ifup " + wlan_iface, function(error, stdout, stderr) {
-                    if (!error) {
-			console.log("ifup " + wlan_iface + " successful...");
-                    	next_step();
-		    } else { console.log(error); } 
+                    if (error) {
+			console.log(error);
+		    } else if (stdout.indexOf("Failed to bring up " + wlan_iface) > -1) {
+			return callback(stdout);
+		    } else {
+		   	console.log("ifup " + wlan_iface + " successful...");
+			next_step();
+		    } 
                 });
             },
         ], callback);
@@ -129,12 +118,13 @@ module.exports = function() {
 
     // Wifi related functions
     _is_wifi_enabled_sync = function(info) {
-        // If we are not an AP, and we have a valid
+	// If we are not an AP, and we have a valid
         // inet_addr - wifi is enabled!
         if (null        == _is_ap_enabled_sync(info) &&
             "<unknown>" != info["inet_addr"]         &&
+	    "<unknown" != info["ap_ssid"]	     &&
             "<unknown>" == info["unassociated"] ) {
-            return info["inet_addr"];
+		return info["inet_addr"];
         }
         return null;
     },
@@ -148,19 +138,7 @@ module.exports = function() {
 
     // Access Point related functions
     _is_ap_enabled_sync = function(info) {
-        // If the hw_addr matches the ap_addr
-        // and the ap_ssid matches "rpi-config-ap"
-        // then we are in AP mode
-        if( typeof info["ap_addr"] == 'undefined' )
-        {
-            return( null );
-        }
-        console.log( "hw_addr %s - ap_addr %s - ap_ssid %s\n", info["hw_addr"], info["ap_addr"], info["ap_ssid"] );
-         
-        var is_ap  =
-            (info["hw_addr"].toLowerCase() == info["ap_addr"].toLowerCase()) &&
-            (info["ap_ssid"] == config.access_point.ssid);
-        return (is_ap) ? info["hw_addr"].toLowerCase() : null;
+        return (info["mode"] == "Master") ? info["hw_addr"] : null; 
     },
 
     _is_ap_enabled = function(callback) {
@@ -265,32 +243,21 @@ module.exports = function() {
     },
 
     // Disables AP mode and reverts to wifi connection
-    _enable_wifi_mode = function(connection_info, callback) {
+    _set_wifi_mode = function(connection_info, callback) {
 
         _is_wifi_enabled(function(error, result_ip) {
             if (error) return callback(error);
-
+	
             if (result_ip) {
                 console.log("\nWifi connection is enabled with IP: " + result_ip);
-                //return callback(null);
+                return callback(null);
             }
-		console.log("enabling wifi mode...");
+            
+            console.log("enabling wifi mode...");
 
-	    var context = config.access_poiny;
+	    var context = config.access_point;
 
             async.series([
-
-                // Update /etc/network/interface with correct info...
-                function update_interfaces(next_step) {
-	            console.log("writing to template...");
-                    /*write_template_to_file(
-                        "./assets/etc/network/interfaces.wifi.template",
-                        "/etc/network/interfaces",
-                        connection_info, next_step);*/
-		    write_template_to_file(
-                        "./assets/etc/network/interfaces.template",
-                        "/etc/network/interfaces", context, next_step);
-                },
 
 		// Update wpa_supplicant with correct info
 		function update_wpa_supplicant(next_step) {
@@ -300,6 +267,30 @@ module.exports = function() {
                         "/etc/wpa_supplicant/wpa_supplicant.conf",
                         connection_info, next_step);
 		},
+		
+		function enable_wifi(next_step) {
+			_enable_wifi_mode(next_step);
+		},
+	    
+
+            ], callback);
+		
+        });
+
+    };
+
+    _enable_wifi_mode = function(callback) {
+	var context = config.access_point;
+
+	async.series([
+
+                // Update /etc/network/interface with correct info...
+                function update_interfaces(next_step) {
+	            console.log("writing to template...");
+		    write_template_to_file(
+                        "./assets/etc/network/interfaces.template",
+                        "/etc/network/interfaces", context, next_step);
+                },
 
                 // Stop the DHCP server...
                 function restart_dhcp_service(next_step) {
@@ -310,14 +301,76 @@ module.exports = function() {
                 },
 
                 function reboot_network_interfaces(next_step) {
-                    _reboot_wireless_network(config.wifi_interface, next_step); 
+                    _reboot_wireless_network(config.wifi_interface, function(error) {
+			if (error) { 
+				return callback(error); 
+			} else {	next_step();	};
+		    }); 
                 },
 	    
+		function test_connection(next_step) {
+		    _is_wifi_enabled(function(error, result_ip) {
+		    	if (result_ip == null) {
+				return callback("Wifi is not enabled.");
+			} else {
+				next_step();
+			};
+		    });	
+		},
 
             ], callback);
-		
-        });
+    };
 
+    //Check to see if the Droplet has any previously known networks
+    _previous_networks = function(callback) {
+	fs.readFile("/etc/wpa_supplicant/wpa_supplicant.conf", {encoding: "utf8"}, function(error, data) {
+		if (error) {
+			console.log("Error reading file at /etc/wpa_supplicant/wpa_supplicant.conf");
+			return callback(error, false);
+		} else {
+			network_available = data.match(/ssid/g);
+			if (network_available) {
+				return callback(null, true);
+			} else {
+				return callback(null, false);
+			};	
+		};
+	});
+    };
+
+    //Set the SSID for the RPI as DROPLETXXX where XXX is the MAC address
+    _set_ssid = function(callback) {
+	exec("ifconfig eth0", function(error, stdout, stderr) {
+		if (error) {
+			return callback("Could not successfully execute ifconfig eth0");
+		};
+		
+		var values = stdout.match(/HWaddr\s([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/g);
+		if (values) {
+			//Format the MAC address
+			var HWaddr = values[0].slice(7);
+			HWaddr = HWaddr.replace(/:/g, "");
+		
+			//set ssid in config.json
+			config.access_point.ssid = "Droplet" + HWaddr;
+			fs.writeFileSync("config.json", JSON.stringify(config));
+			
+			return callback(null);
+		} else {
+			return callback("HWaddr of eth0 not found");
+		};
+	});
+    };
+
+    //Empty wpa file of all known networks
+    _empty_wpa_supplicant = function(callback) {
+	var context = "";
+	
+	console.log("Writing to wpa_supplicant.conf");
+	write_template_to_file(
+        	"./assets/etc/wpa_supplicant/wpa_supplicant.conf.empty.template",
+                "/etc/wpa_supplicant/wpa_supplicant.conf",
+                context, callback);
     };
 
     return {
@@ -331,6 +384,11 @@ module.exports = function() {
         is_ap_enabled_sync:      _is_ap_enabled_sync,
 
         enable_ap_mode:          _enable_ap_mode,
+	set_wifi_mode:           _set_wifi_mode,
         enable_wifi_mode:        _enable_wifi_mode,
+ 
+	previous_networks:	 _previous_networks,
+	set_ssid:		 _set_ssid,
+	empty_wpa_supplicant: 	 _empty_wpa_supplicant,
     };
 }
